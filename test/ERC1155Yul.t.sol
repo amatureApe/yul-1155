@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
-import "../src/MyContract.sol";
+import "deploy-yul/YulDeployer.sol";
 
 contract MyContractTest is Test {
-    MyContract myContract;
+    YulDeployer yulDeployer = new YulDeployer();
+    address public erc1155YulContract;
 
     function setUp() public {
-        myContract = new MyContract();
+        erc1155YulContract = yulDeployer.deployContract("ERC1155Yul");
     }
 
-    function testAdd() public {
-        uint result = myContract.add(1, 2);
-        assertEq(result, 3);
+    function test_basic() public {
+        assertEq(true, true);
     }
 }
