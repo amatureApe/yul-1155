@@ -39,4 +39,163 @@ contract MyContractTest is Test {
         assertEq(mint_success, true);
         assertEq(abi.decode(balanceOf_returndata, (uint256)), amount, "Minting failed");
     }
+
+    function test_batchMint() public {
+        address[] memory to = new address[](2);
+        to[0] = user1;
+        to[1] = user2;
+
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = tokenId1;
+        ids[1] = tokenId2;
+
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 100;
+        amounts[1] = 200;
+
+        vm.prank(defaultSender);
+        bytes memory batchMintData = abi.encodeWithSelector(0xd81d0a15, user1, ids, amounts);
+        (bool batchMint_success, ) = token.call(batchMintData);
+
+        bytes memory balanceOfData1 = abi.encodeWithSelector(0x00fdd58e, user1, tokenId1);
+        (, bytes memory balanceOf_returndata1) = token.call(balanceOfData1);
+
+        assertEq(batchMint_success, true);
+        assertEq(abi.decode(balanceOf_returndata1, (uint256)), amounts[0], "Batch minting failed for user1");
+    }
+
+    function test_burn() public {
+        uint256 initialAmount = 100;
+        uint256 burnAmount = 50;
+    
+        vm.prank(defaultSender);
+        bytes memory mintData = abi.encodeWithSelector(0x156e29f6, user1, tokenId1, initialAmount);
+        token.call(mintData);
+    
+        vm.prank(defaultSender);
+        bytes memory burnData = abi.encodeWithSelector(0xf5298aca, user1, tokenId1, burnAmount);
+        (bool burn_success, ) = token.call(burnData);
+    
+        bytes memory balanceOfData = abi.encodeWithSelector(0x00fdd58e, user1, tokenId1);
+        (, bytes memory balanceOf_returndata) = token.call(balanceOfData);
+    
+        assertEq(burn_success, true);
+        assertEq(abi.decode(balanceOf_returndata, (uint256)), initialAmount - burnAmount, "Burning failed");
+    }
+
+    function test_burnBatch() public {
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = tokenId1;
+        ids[1] = tokenId2;
+    
+        uint256[] memory initialAmounts = new uint256[](2);
+        initialAmounts[0] = 100;
+        initialAmounts[1] = 200;
+    
+        uint256[] memory burnAmounts = new uint256[](2);
+        burnAmounts[0] = 50;
+        burnAmounts[1] = 100;
+    
+        vm.prank(defaultSender);
+        bytes memory batchMintData = abi.encodeWithSelector(0xd81d0a15, user1, ids, initialAmounts);
+        (bool batchMint_success, ) = token.call(batchMintData);
+
+        assertEq(batchMint_success, true);
+    
+        vm.prank(defaultSender);
+        bytes memory burnBatchData = abi.encodeWithSelector(0x6b20c454, user1, ids, burnAmounts);
+        (bool burnBatch_success, ) = token.call(burnBatchData);
+    
+        bytes memory balanceOfData1 = abi.encodeWithSelector(0x00fdd58e, user1, tokenId1);
+        (, bytes memory balanceOf_returndata1) = token.call(balanceOfData1);
+    
+        assertEq(burnBatch_success, true);
+        assertEq(abi.decode(balanceOf_returndata1, (uint256)), initialAmounts[0] - burnAmounts[0], "Batch burning failed for user1");
+    }
+
+    function test_setApprovalForAll() public {
+        uint256[] memory initialAmounts = new uint256[](2);
+        initialAmounts[0] = 100;
+        initialAmounts[1] = 200;
+    
+        vm.prank(defaultSender);
+        bytes memory batchMintData = abi.encodeWithSelector(0x156e29f6, user1, [tokenId1, tokenId2], initialAmounts);
+        token.call(batchMintData);
+    
+        // Set approval for user2 to manage user1's tokens
+        vm.prank(user1);
+        bytes memory setApprovalForAllData = abi.encodeWithSelector(0xa22cb465, user2, true);
+        (bool setApprovalForAll_success, ) = token.call(setApprovalForAllData);
+    
+        // Check if the approval was set correctly
+        bytes memory isApprovedForAllData = abi.encodeWithSelector(0xe985e9c5, user1, user2);
+        (, bytes memory isApprovedForAll_returndata) = token.call(isApprovedForAllData);
+    
+        assertEq(setApprovalForAll_success, true, "Set approval for all failed");
+        assertEq(abi.decode(isApprovedForAll_returndata, (bool)), true, "Approval status is incorrect");
+    
+        // Remove approval for user2 to manage user1's tokens
+        vm.prank(user1);
+        bytes memory removeApprovalForAllData = abi.encodeWithSelector(0xa22cb465, user2, false);
+        (bool removeApprovalForAll_success, ) = token.call(removeApprovalForAllData);
+    
+        // Check if the approval was removed correctly
+        (, bytes memory isApprovedForAll_returndata2) = token.call(isApprovedForAllData);
+    
+        assertEq(removeApprovalForAll_success, true, "Remove approval for all failed");
+        assertEq(abi.decode(isApprovedForAll_returndata2, (bool)), false, "Approval status is incorrect after removal");
+    }
+
+    function test_safeBatchTransferFrom() public {
+        uint256[] memory initialAmounts = new uint256[](2);
+        initialAmounts[0] = 100;
+        initialAmounts[1] = 200;
+    
+        vm.prank(defaultSender);
+        bytes memory batchMintData = abi.encodeWithSelector(0xd81d0a15, user1, [tokenId1, tokenId2], initialAmounts);
+        (bool batchMint_success, ) = token.call(batchMintData);
+
+        assertEq(batchMint_success, true);
+
+        // Set approval for user2 to manage user1's tokens
+        vm.prank(user1);
+        bytes memory setApprovalForAllData = abi.encodeWithSelector(0xa22cb465, user2, true);
+        (bool setApprovalForAll_success, ) = token.call(setApprovalForAllData);
+
+        // Check if the approval was set correctly
+        bytes memory isApprovedForAllData = abi.encodeWithSelector(0xe985e9c5, user1, user2);
+        (, bytes memory isApprovedForAll_returndata) = token.call(isApprovedForAllData);
+
+        assertEq(setApprovalForAll_success, true, "Set approval for all failed");
+        assertEq(abi.decode(isApprovedForAll_returndata, (bool)), true, "Approval status is incorrect");
+    
+        uint256[] memory transferAmounts = new uint256[](2);
+        transferAmounts[0] = 50;
+        transferAmounts[1] = 100;
+        
+        vm.prank(user2);
+        bytes memory safeBatchTransferFromData = abi.encodeWithSelector(0xfba0ee64, user1, user2, [tokenId1, tokenId2], transferAmounts);
+        emit log_named_bytes("PING", safeBatchTransferFromData);
+        (bool safeBatchTransferFrom_success, ) = token.call(safeBatchTransferFromData);
+
+        assertEq(safeBatchTransferFrom_success, true);
+    
+        // bytes memory balanceOfData1 = abi.encodeWithSelector(0x00fdd58e, user1, tokenId1);
+        // (, bytes memory balanceOf_returndata1) = token.call(balanceOfData1);
+    
+        // bytes memory balanceOfData2 = abi.encodeWithSelector(0x00fdd58e, user1, tokenId2);
+        // (, bytes memory balanceOf_returndata2) = token.call(balanceOfData2);
+    
+        // bytes memory balanceOfData3 = abi.encodeWithSelector(0x00fdd58e, user2, tokenId1);
+        // (, bytes memory balanceOf_returndata3) = token.call(balanceOfData3);
+    
+        // bytes memory balanceOfData4 = abi.encodeWithSelector(0x00fdd58e, user2, tokenId2);
+        // (, bytes memory balanceOf_returndata4) = token.call(balanceOfData4);
+    
+        // assertEq(abi.decode(balanceOf_returndata1, (uint256)), initialAmounts[0] - transferAmounts[0], "Safe batch transfer failed for user1, tokenId1");
+        // assertEq(abi.decode(balanceOf_returndata2, (uint256)), initialAmounts[1] - transferAmounts[1], "Safe batch transfer failed for user1, tokenId2");
+        // assertEq(abi.decode(balanceOf_returndata3, (uint256)), transferAmounts[0], "Safe batch transfer failed for user2, tokenId1");
+        // assertEq(abi.decode(balanceOf_returndata4, (uint256)), transferAmounts[1], "Safe batch transfer failed for user2, tokenId2");
+    }
+
 }
