@@ -191,6 +191,73 @@ contract MyContractTest is Test {
         assertBatchTransferredAmounts(user1, user2, ids, initialAmounts, transferAmounts);
     }
     
+    function test_balanceOf() public {
+        uint256[] memory initialAmounts = new uint256[](2);
+        initialAmounts[0] = 100;
+        initialAmounts[1] = 200;
+    
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = tokenId1;
+        ids[1] = tokenId2;
+    
+        vm.prank(defaultSender);
+        bytes memory batchMintData = abi.encodeWithSelector(0xd81d0a15, user1, ids, initialAmounts);
+        (bool batchMint_success, ) = token.call(batchMintData);
+    
+        assertEq(batchMint_success, true);
+    
+        for (uint256 i = 0; i < ids.length; i++) {
+            bytes memory balanceOfData = abi.encodeWithSelector(0x00fdd58e, user1, ids[i]);
+            (, bytes memory balanceOf_returndata) = token.call(balanceOfData);
+            assertEq(abi.decode(balanceOf_returndata, (uint256)), initialAmounts[i], "Balance of user1 for token ID is incorrect");
+        }
+    }
+
+    function test_balanceOfBatch() public {
+        uint256[] memory initialAmounts = new uint256[](2);
+        initialAmounts[0] = 100;
+        initialAmounts[1] = 200;
+    
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = tokenId1;
+        ids[1] = tokenId2;
+    
+        address[] memory accounts = new address[](2);
+        accounts[0] = user1;
+        accounts[1] = user2;
+    
+        vm.startPrank(defaultSender);
+
+        bytes memory batchMintData1 = abi.encodeWithSelector(0xd81d0a15, user1, ids, initialAmounts);
+        (bool batchMint_success1, ) = token.call(batchMintData1);
+        assertEq(batchMint_success1, true, "Batch minting failed for user1");
+        assertBatchMintedAmounts(user1, ids, initialAmounts);
+    
+        bytes memory batchMintData2 = abi.encodeWithSelector(0xd81d0a15, user2, ids, initialAmounts);
+        (bool batchMint_success2, ) = token.call(batchMintData2);
+        assertEq(batchMint_success2, true, "Batch minting failed for user2");
+        assertBatchMintedAmounts(user2, ids, initialAmounts);
+    
+        bytes memory balanceOfBatchData = abi.encodeWithSelector(0x4e1273f4, accounts, ids);
+        (, bytes memory balanceOfBatch_returndata) = token.call(balanceOfBatchData);
+    
+        uint256[] memory expectedBalances = new uint256[](2);
+        expectedBalances[0] = initialAmounts[0];
+        expectedBalances[1] = initialAmounts[1];
+    
+        uint256[] memory returnedBalances = abi.decode(balanceOfBatch_returndata, (uint256[]));
+        assertEq(returnedBalances.length, expectedBalances.length, "Returned balances array length mismatch");
+    
+        for (uint256 i = 0; i < expectedBalances.length; i++) {
+            assertEq(returnedBalances[i], expectedBalances[i], "Balance mismatch");
+        }
+    }
+
+
+    ////////////////////////////////////////////////////////////////
+    ////////////////////        HELPERS         ////////////////////
+    ////////////////////////////////////////////////////////////////
+
     function assertBatchMintedAmounts(address account, uint256[] memory ids, uint256[] memory amounts) internal {
         for (uint256 i = 0; i < ids.length; i++) {
             bytes memory balanceOfData = abi.encodeWithSelector(0x00fdd58e, account, ids[i]);
@@ -210,5 +277,5 @@ contract MyContractTest is Test {
             assertEq(abi.decode(balanceOfTo_returndata, (uint256)), transferAmounts[i], "Safe batch transfer failed for receiver");
         }
     }
-    
+
 }
