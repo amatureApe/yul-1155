@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "forge-std/Test.sol";
 import "deploy-yul/YulDeployer.sol";
 
-contract MyContractTest is Test {
+contract ERC1155Yul is Test {
     YulDeployer yulDeployer = new YulDeployer();
     address public token;
     address defaultSender = address(0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38);
@@ -150,7 +150,38 @@ contract MyContractTest is Test {
         assertEq(abi.decode(isApprovedForAll_returndata2, (bool)), false, "Approval status is incorrect after removal");
     }
 
-    // This test is broken up into a few different functions to get around Stack Too Deep
+    function test_safeTransferFrom() public {
+        uint256 initialAmount = 100;
+        uint256 transferAmount = 50;
+    
+        // Mint tokens to user1
+        vm.prank(defaultSender);
+        bytes memory mintData = abi.encodeWithSelector(0x156e29f6, user1, tokenId1, initialAmount);
+        token.call(mintData);
+    
+        // Set approval for user2 to manage user1's tokens
+        vm.prank(user1);
+        bytes memory setApprovalForAllData = abi.encodeWithSelector(0xa22cb465, user2, true);
+        token.call(setApprovalForAllData);
+    
+        // Transfer tokens from user1 to user2 using safeTransferFrom
+        vm.prank(user2);
+        bytes memory safeTransferFromData = abi.encodeWithSelector(0x0febdd49, user1, user2, tokenId1, transferAmount);
+        token.call(safeTransferFromData);
+    
+        // Check balances after the transfer
+        bytes memory balanceOfUser1Data = abi.encodeWithSelector(0x00fdd58e, user1, tokenId1);
+        (, bytes memory balanceOfUser1_returndata) = token.call(balanceOfUser1Data);
+        uint256 user1Balance = abi.decode(balanceOfUser1_returndata, (uint256));
+    
+        bytes memory balanceOfUser2Data = abi.encodeWithSelector(0x00fdd58e, user2, tokenId1);
+        (, bytes memory balanceOfUser2_returndata) = token.call(balanceOfUser2Data);
+        uint256 user2Balance = abi.decode(balanceOfUser2_returndata, (uint256));
+    
+        assertEq(user1Balance, initialAmount - transferAmount, "SafeTransferFrom failed for sender");
+        assertEq(user2Balance, transferAmount, "SafeTransferFrom failed for receiver");
+    }
+
     function test_safeBatchTransferFrom() public {
         uint256[] memory initialAmounts = new uint256[](2);
         initialAmounts[0] = 100;
@@ -189,6 +220,89 @@ contract MyContractTest is Test {
     
         assertEq(safeBatchTransferFrom_success, true);
         assertBatchTransferredAmounts(user1, user2, ids, initialAmounts, transferAmounts);
+    }
+
+    function test_safeTransferFrom_invalidInputs() public {
+        uint256 initialAmount = 100;
+        uint256 transferAmount = 50;
+    
+        // Mint tokens to user1
+        vm.prank(defaultSender);
+        bytes memory mintData = abi.encodeWithSelector(0x156e29f6, user1, tokenId1, initialAmount);
+        token.call(mintData);
+    
+        // Set approval for user2 to manage user1's tokens
+        vm.prank(user1);
+        bytes memory setApprovalForAllData = abi.encodeWithSelector(0xa22cb465, user2, true);
+        token.call(setApprovalForAllData);
+    
+        // Test transferring to zero address
+        vm.prank(user2);
+        bytes memory transferToZeroAddressData = abi.encodeWithSelector(0x0febdd49, user1, address(0), tokenId1, transferAmount, "");
+        vm.expectRevert();
+        token.call(transferToZeroAddressData);
+    
+        // Test transferring zero amount
+        vm.prank(user2);
+        bytes memory transferZeroAmountData = abi.encodeWithSelector(0x0febdd49, user1, user2, tokenId1, 0, "");
+        vm.expectRevert();
+        token.call(transferZeroAmountData);
+    
+        // Test transferring more than the balance
+        vm.prank(user2);
+        bytes memory transferExceedingBalanceData = abi.encodeWithSelector(0x0febdd49, user1, user2, tokenId1, initialAmount + 1, "");
+        vm.expectRevert();
+        token.call(transferExceedingBalanceData);
+    
+        // Test transferring an invalid token ID
+        vm.prank(user2);
+        bytes memory transferInvalidTokenIdData = abi.encodeWithSelector(0x0febdd49, user1, user2, 0, transferAmount, "");
+        vm.expectRevert();
+        token.call(transferInvalidTokenIdData);
+    }
+
+    function test_safeTransferFrom_edgeCases() public {
+        uint256 maxAmount = type(uint256).max;
+    
+        // Mint the maximum possible amount of tokens to user1
+        vm.prank(defaultSender);
+        bytes memory mintData = abi.encodeWithSelector(0x156e29f6, user1, tokenId1, maxAmount);
+        token.call(mintData);
+    
+        // Set approval for user2 to manage user1's tokens
+        vm.prank(user1);
+        bytes memory setApprovalForAllData = abi.encodeWithSelector(0xa22cb465, user2, true);
+        token.call(setApprovalForAllData);
+    
+        // Test transferring the maximum possible amount
+        vm.prank(user2);
+        bytes memory transferMaxAmountData = abi.encodeWithSelector(0x0febdd49, user1, user2, tokenId1, maxAmount, "");
+        (bool success, ) = token.call(transferMaxAmountData);
+        require(success, "SafeTransferFrom failed for max amount");
+    
+        // Check balances after the transfer
+        bytes memory balanceOfUser1Data = abi.encodeWithSelector(0x00fdd58e, user1, tokenId1);
+        (, bytes memory balanceOfUser1_returndata) = token.call(balanceOfUser1Data);
+        uint256 user1Balance = abi.decode(balanceOfUser1_returndata, (uint256));
+    
+        bytes memory balanceOfUser2Data = abi.encodeWithSelector(0x00fdd58e, user2, tokenId1);
+        (, bytes memory balanceOfUser2_returndata) = token.call(balanceOfUser2Data);
+        uint256 user2Balance = abi.decode(balanceOfUser2_returndata, (uint256));
+    
+        assertEq(user1Balance, 0, "SafeTransferFrom failed to transfer all tokens from sender");
+        assertEq(user2Balance, maxAmount, "SafeTransferFrom failed to transfer all tokens to receiver");
+    
+        // Test transferring to the same address
+        vm.prank(user2);
+        bytes memory transferToSelfData = abi.encodeWithSelector(0x0febdd49, user2, user2, tokenId1, maxAmount, "");
+        (success, ) = token.call(transferToSelfData);
+        require(success, "SafeTransferFrom failed for transfer to self");
+    
+        // Check balance after the transfer to self
+        (, bytes memory balanceOfUser2_returndata2) = token.call(balanceOfUser2Data);
+        user2Balance = abi.decode(balanceOfUser2_returndata2, (uint256));
+    
+        assertEq(user2Balance, maxAmount, "SafeTransferFrom failed for transfer to self");
     }
     
     function test_balanceOf() public {
@@ -253,6 +367,36 @@ contract MyContractTest is Test {
         }
     }
 
+    function test_unauthorizedMinting() public {
+        uint256 amount = 100;
+    
+        vm.prank(user1); // Prank as an unauthorized account
+        bytes memory mintData = abi.encodeWithSelector(0x156e29f6, user1, tokenId1, amount);
+        
+        vm.expectRevert(); // Expect the transaction to revert
+        token.call(mintData);
+    }
+
+    function test_unauthorizedBurning() public {
+        uint256 initialAmount = 100;
+        uint256 burnAmount = 50;
+    
+        // Mint tokens to user1
+        vm.prank(defaultSender);
+        bytes memory mintData = abi.encodeWithSelector(0x156e29f6, user1, tokenId1, initialAmount);
+        token.call(mintData);
+    
+        // Attempt to burn tokens from user2 (unauthorized)
+        vm.prank(user2);
+        bytes memory burnData = abi.encodeWithSelector(0xf5298aca, user1, tokenId1, burnAmount);
+        vm.expectRevert(); // Expect the transaction to revert
+        token.call(burnData);
+    
+        // Check that the balance of user1 remains unchanged
+        bytes memory balanceOfData = abi.encodeWithSelector(0x00fdd58e, user1, tokenId1);
+        (, bytes memory balanceOf_returndata) = token.call(balanceOfData);
+        assertEq(abi.decode(balanceOf_returndata, (uint256)), initialAmount, "Unauthorized burning should not change balance");
+    }
 
     ////////////////////////////////////////////////////////////////
     ////////////////////        HELPERS         ////////////////////
